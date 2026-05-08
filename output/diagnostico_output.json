@@ -1,0 +1,138 @@
+{
+  "arquivo": "G:\\FS_BIOENERGIA\\FAZ_MBOI\\mosaicos\\MOSAICO\\output\\mosaico_final.tif",
+  "tamanho_disco": 2600294113,
+  "tamanho_disco_human": "2.42 GB",
+  "driver": "GTiff",
+  "largura": 39848,
+  "altura": 49464,
+  "bandas": 4,
+  "megapixels": 1971.04,
+  "dtype": "uint8",
+  "crs": "EPSG:31981",
+  "is_projected": true,
+  "res_x": 0.0508,
+  "res_y": 0.0508,
+  "gsd_cm": 5.08,
+  "area_ha": 508.6548,
+  "area_km2": 5.086548,
+  "nodata": null,
+  "compressao": "Compression.deflate",
+  "predictor": "2",
+  "tiled": true,
+  "block_shapes": [
+    [
+      512,
+      512
+    ],
+    [
+      512,
+      512
+    ],
+    [
+      512,
+      512
+    ],
+    [
+      512,
+      512
+    ]
+  ],
+  "photometric": null,
+  "overviews": [
+    2,
+    4,
+    8,
+    16,
+    32,
+    64
+  ],
+  "overviews_sugeridos": [
+    2,
+    4,
+    8,
+    16,
+    32,
+    64,
+    128
+  ],
+  "bigtiff": false,
+  "rotacao": false,
+  "has_alpha": true,
+  "tamanho_raw": 7884165888,
+  "taxa_compressao": 3.03,
+  "ram_estimada_qgis": 23652497664,
+  "ram_estimada_qgis_human": "22.03 GB",
+  "benchmark_tile_ms": 12.0,
+  "band_stats": [
+    {
+      "band": 1,
+      "min": 0.0,
+      "max": 255.0,
+      "mean": 57.4478,
+      "std": 73.5263,
+      "median": 0.0,
+      "pct_valid": 100.0,
+      "is_constant": false,
+      "clipping_low": true,
+      "clipping_high": false
+    },
+    {
+      "band": 2,
+      "min": 0.0,
+      "max": 254.0,
+      "mean": 55.0171,
+      "std": 68.0282,
+      "median": 0.0,
+      "pct_valid": 100.0,
+      "is_constant": false,
+      "clipping_low": true,
+      "clipping_high": false
+    },
+    {
+      "band": 3,
+      "min": 0.0,
+      "max": 254.0,
+      "mean": 44.0762,
+      "std": 57.7639,
+      "median": 0.0,
+      "pct_valid": 100.0,
+      "is_constant": false,
+      "clipping_low": true,
+      "clipping_high": false
+    },
+    {
+      "band": 4,
+      "min": 0.0,
+      "max": 255.0,
+      "mean": 116.5461,
+      "std": 126.9581,
+      "median": 0.0,
+      "pct_valid": 100.0,
+      "is_constant": false,
+      "clipping_low": true,
+      "clipping_high": true
+    }
+  ],
+  "meta_tags": {
+    "DEFAULT": {
+      "AREA_OR_POINT": "Area"
+    },
+    "IMAGE_STRUCTURE": {
+      "COMPRESSION": "DEFLATE",
+      "INTERLEAVE": "PIXEL",
+      "PREDICTOR": "2"
+    }
+  },
+  "problemas": [
+    "Overviews incompletos. Niveis faltando: [128]",
+    "4 bandas (inclui alpha) → pode reduzir performance de renderizacao no QGIS.",
+    "Arquivo >4GB sem BigTIFF. Pode corromper em ferramentas GDAL mais antigas.",
+    "RAM estimada para QGIS em resolucao total: 22.03 GB. Maquinas com <16GB RAM vao travar.",
+    "Banda 1 com subexposicao (clipping baixo).",
+    "Banda 2 com subexposicao (clipping baixo).",
+    "Banda 3 com subexposicao (clipping baixo).",
+    "Banda 4 com saturacao (clipping alto). Verifique exposicao.",
+    "Banda 4 com subexposicao (clipping baixo)."
+  ],
+  "diagnostico_ok": true
+}

@@ -56,7 +56,7 @@ OUTPUT_INTERLEAVE = "pixel"
 OUTPUT_NODATA     = None       # None = sem nodata (transparência pelo alpha)
 
 # ── Níveis de overview para o mosaico de saída ─────────────────
-OVERVIEW_LEVELS = [2, 4, 8, 16, 32, 64]
+OVERVIEW_LEVELS = [2, 4, 8, 16, 32, 64,128,256]
 OVERVIEW_RESAMPLING = WarpResampling.nearest
 
 # ── Amostragem para estatísticas do diagnóstico ────────────────

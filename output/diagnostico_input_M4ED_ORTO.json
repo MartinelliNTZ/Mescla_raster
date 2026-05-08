@@ -1,0 +1,143 @@
+{
+  "arquivo": "G:\\FS_BIOENERGIA\\FAZ_MBOI\\mosaicos\\MOSAICO\\input\\M4ED_ORTO.tif",
+  "tamanho_disco": 1573594011,
+  "tamanho_disco_human": "1.47 GB",
+  "driver": "GTiff",
+  "largura": 30336,
+  "altura": 42116,
+  "bandas": 4,
+  "megapixels": 1277.63,
+  "dtype": "uint8",
+  "crs": "EPSG:31981",
+  "is_projected": true,
+  "res_x": 0.0508,
+  "res_y": 0.0508,
+  "gsd_cm": 5.08,
+  "area_ha": 329.7106,
+  "area_km2": 3.297106,
+  "nodata": 0.0,
+  "compressao": "Compression.deflate",
+  "predictor": null,
+  "tiled": true,
+  "block_shapes": [
+    [
+      256,
+      256
+    ],
+    [
+      256,
+      256
+    ],
+    [
+      256,
+      256
+    ],
+    [
+      256,
+      256
+    ]
+  ],
+  "photometric": null,
+  "overviews": [
+    2,
+    4,
+    8,
+    16,
+    32,
+    64,
+    128,
+    255
+  ],
+  "overviews_sugeridos": [
+    2,
+    4,
+    8,
+    16,
+    32,
+    64,
+    128,
+    256
+  ],
+  "bigtiff": false,
+  "rotacao": false,
+  "has_alpha": true,
+  "tamanho_raw": 5110523904,
+  "taxa_compressao": 3.25,
+  "ram_estimada_qgis": 15331571712,
+  "ram_estimada_qgis_human": "14.28 GB",
+  "benchmark_tile_ms": 4.33,
+  "band_stats": [
+    {
+      "band": 1,
+      "min": null,
+      "max": null,
+      "mean": null,
+      "std": null,
+      "median": null,
+      "pct_valid": 0.0,
+      "is_constant": true,
+      "clipping_low": false,
+      "clipping_high": false
+    },
+    {
+      "band": 2,
+      "min": null,
+      "max": null,
+      "mean": null,
+      "std": null,
+      "median": null,
+      "pct_valid": 0.0,
+      "is_constant": true,
+      "clipping_low": false,
+      "clipping_high": false
+    },
+    {
+      "band": 3,
+      "min": null,
+      "max": null,
+      "mean": null,
+      "std": null,
+      "median": null,
+      "pct_valid": 0.0,
+      "is_constant": true,
+      "clipping_low": false,
+      "clipping_high": false
+    },
+    {
+      "band": 4,
+      "min": null,
+      "max": null,
+      "mean": null,
+      "std": null,
+      "median": null,
+      "pct_valid": 0.0,
+      "is_constant": true,
+      "clipping_low": false,
+      "clipping_high": false
+    }
+  ],
+  "meta_tags": {
+    "DEFAULT": {
+      "AREA_OR_POINT": "Area"
+    },
+    "IMAGE_STRUCTURE": {
+      "COMPRESSION": "DEFLATE",
+      "INTERLEAVE": "PIXEL"
+    }
+  },
+  "problemas": [
+    "Overviews incompletos. Niveis faltando: [256]",
+    "Compressao sem PREDICTOR configurado. Usar PREDICTOR=2 melhora compressao e velocidade.",
+    "4 bandas (inclui alpha) → pode reduzir performance de renderizacao no QGIS.",
+    "Arquivo >4GB sem BigTIFF. Pode corromper em ferramentas GDAL mais antigas.",
+    "Banda 1 com valor constante (pode estar morta ou vazia).",
+    "Banda 1: apenas 0.0% pixels validos. Alto percentual de NoData.",
+    "Banda 2 com valor constante (pode estar morta ou vazia).",
+    "Banda 2: apenas 0.0% pixels validos. Alto percentual de NoData.",
+    "Banda 3 com valor constante (pode estar morta ou vazia).",
+    "Banda 3: apenas 0.0% pixels validos. Alto percentual de NoData.",
+    "Banda 4 com valor constante (pode estar morta ou vazia).",
+    "Banda 4: apenas 0.0% pixels validos. Alto percentual de NoData."
+  ],
+  "diagnostico_ok": true
+}

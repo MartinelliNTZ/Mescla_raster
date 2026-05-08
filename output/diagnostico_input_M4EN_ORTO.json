@@ -1,0 +1,133 @@
+{
+  "arquivo": "G:\\FS_BIOENERGIA\\FAZ_MBOI\\mosaicos\\MOSAICO\\input\\M4EN_ORTO.tif",
+  "tamanho_disco": 1315995666,
+  "tamanho_disco_human": "1.23 GB",
+  "driver": "GTiff",
+  "largura": 27924,
+  "altura": 22366,
+  "bandas": 4,
+  "megapixels": 624.55,
+  "dtype": "uint8",
+  "crs": "EPSG:31981",
+  "is_projected": true,
+  "res_x": 0.0544,
+  "res_y": 0.0544,
+  "gsd_cm": 5.44,
+  "area_ha": 184.8263,
+  "area_km2": 1.848263,
+  "nodata": 0.0,
+  "compressao": "Compression.deflate",
+  "predictor": null,
+  "tiled": true,
+  "block_shapes": [
+    [
+      256,
+      256
+    ],
+    [
+      256,
+      256
+    ],
+    [
+      256,
+      256
+    ],
+    [
+      256,
+      256
+    ]
+  ],
+  "photometric": null,
+  "overviews": [
+    2,
+    4,
+    8,
+    16,
+    32,
+    64,
+    128,
+    254
+  ],
+  "overviews_sugeridos": [
+    2,
+    4,
+    8,
+    16,
+    32,
+    64,
+    128
+  ],
+  "bigtiff": false,
+  "rotacao": false,
+  "has_alpha": true,
+  "tamanho_raw": 2498192736,
+  "taxa_compressao": 1.9,
+  "ram_estimada_qgis": 7494578208,
+  "ram_estimada_qgis_human": "6.98 GB",
+  "benchmark_tile_ms": 3.68,
+  "band_stats": [
+    {
+      "band": 1,
+      "min": 1.0,
+      "max": 250.0,
+      "mean": 126.6624,
+      "std": 52.191,
+      "median": 127.0,
+      "pct_valid": 52.43,
+      "is_constant": false,
+      "clipping_low": false,
+      "clipping_high": false
+    },
+    {
+      "band": 2,
+      "min": 1.0,
+      "max": 253.0,
+      "mean": 121.7288,
+      "std": 42.3518,
+      "median": 126.0,
+      "pct_valid": 52.43,
+      "is_constant": false,
+      "clipping_low": false,
+      "clipping_high": false
+    },
+    {
+      "band": 3,
+      "min": 1.0,
+      "max": 253.0,
+      "mean": 97.6177,
+      "std": 42.7996,
+      "median": 96.0,
+      "pct_valid": 52.43,
+      "is_constant": false,
+      "clipping_low": false,
+      "clipping_high": false
+    },
+    {
+      "band": 4,
+      "min": 1.0,
+      "max": 255.0,
+      "mean": 254.759,
+      "std": 5.6252,
+      "median": 255.0,
+      "pct_valid": 52.43,
+      "is_constant": false,
+      "clipping_low": false,
+      "clipping_high": true
+    }
+  ],
+  "meta_tags": {
+    "DEFAULT": {
+      "AREA_OR_POINT": "Area"
+    },
+    "IMAGE_STRUCTURE": {
+      "COMPRESSION": "DEFLATE",
+      "INTERLEAVE": "PIXEL"
+    }
+  },
+  "problemas": [
+    "Compressao sem PREDICTOR configurado. Usar PREDICTOR=2 melhora compressao e velocidade.",
+    "4 bandas (inclui alpha) → pode reduzir performance de renderizacao no QGIS.",
+    "Banda 4 com saturacao (clipping alto). Verifique exposicao."
+  ],
+  "diagnostico_ok": true
+}
