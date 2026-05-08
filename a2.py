@@ -1,139 +1,109 @@
 import rasterio
+from rasterio.warp import reproject, Resampling as WarpResampling
 from rasterio.merge import merge
+from rasterio.enums import ColorInterp
 import glob
 import os
 import numpy as np
-from rasterio.enums import Resampling
 from scipy.ndimage import distance_transform_edt
+import warnings
+warnings.filterwarnings("ignore")
 
-print("=== Início do processo de mosaico com transição suave (feathering manual) ===")
+print("=== Mosaico feathering full-RAM (float32) ===")
 
-# 1. Listar arquivos de entrada
+# ── 1. Inputs ─────────────────────────────────────────────────────────────────
 input_files = glob.glob(r"G:\FS_BIOENERGIA\FAZ_MBOI\mosaicos\MOSAICO\input\*.tif")
 input_files = [f for f in input_files if "mosaico_final" not in os.path.basename(f)]
-
-print(f"  Arquivos selecionados: {len(input_files)}")
+print(f"  Arquivos: {len(input_files)}")
 for f in input_files:
     print(f"    - {f}")
 
-if len(input_files) < 2:
-    raise FileNotFoundError("São necessários pelo menos 2 arquivos originais.")
-
-# 2. Mesclar primeiro para obter extensão total e transform do mosaico
+# ── 2. Grid de referência ─────────────────────────────────────────────────────
 datasets = [rasterio.open(f) for f in input_files]
 
-# Verifica se todos têm 4 bandas (RGB + Alpha)
-for ds in datasets:
-    print(f"  {os.path.basename(ds.name)}: {ds.count} bandas, dtype={ds.dtypes[0]}, CRS={ds.crs}")
-
-# Mescla simples para obter o grid de referência (usa 'first' como base)
 mosaic_ref, out_transform = merge(datasets, method='first')
-out_crs = datasets[0].crs
+out_crs   = datasets[0].crs
 out_dtype = datasets[0].dtypes[0]
-n_bands, height, width = mosaic_ref.shape
-print(f"  Grid do mosaico: {width}x{height}, {n_bands} bandas")
+_, height, width = mosaic_ref.shape
+del mosaic_ref
+print(f"  Grid: {width}x{height}  dtype={out_dtype}")
 
-# 3. Reprojetar cada imagem para o grid do mosaico final e aplicar feathering
-from rasterio.windows import from_bounds
-from rasterio.transform import array_bounds
+iinfo = np.iinfo(out_dtype)
 
-# Limites do mosaico final
-bounds = rasterio.transform.array_bounds(height, width, out_transform)
-print(f"  Bounds do mosaico: {bounds}")
+# ── 3. Acumuladores float32 ───────────────────────────────────────────────────
+accum_rgb   = np.zeros((3, height, width), dtype=np.float32)
+accum_alpha = np.zeros((height, width),    dtype=np.float32)
+accum_w     = np.zeros((height, width),    dtype=np.float32)
 
-# Arrays acumuladores: soma ponderada e soma dos pesos
-accum_rgb   = np.zeros((3, height, width), dtype=np.float64)
-accum_alpha = np.zeros((height, width),    dtype=np.float64)
-accum_w     = np.zeros((height, width),    dtype=np.float64)
-
+# ── 4. Para cada imagem ───────────────────────────────────────────────────────
 for ds in datasets:
     name = os.path.basename(ds.name)
     print(f"  Processando {name}...")
 
-    # Reprojetar para o grid do mosaico
-    from rasterio.warp import reproject, Resampling as WarpResampling
+    # Banda 4 como máscara — ignora o nodata=0 usando dataset_mask
+    # dataset_mask: 255=válido, 0=inválido (mais confiável que ler banda 4 diretamente)
+    alpha_orig = ds.dataset_mask().astype(np.float32)
 
-    # Arrays de destino para esta imagem
-    dst_rgb   = np.zeros((3, height, width), dtype=np.float64)
-    dst_alpha = np.zeros((1, height, width), dtype=np.float64)
+    mask = alpha_orig > 0
+    dist = distance_transform_edt(mask).astype(np.float32)
+    dmax = dist.max()
+    if dmax > 0:
+        dist /= dmax
+    del alpha_orig, mask
 
-    # Reprojetar bandas RGB (1,2,3)
-    for b in range(1, 4):
-        reproject(
-            source=rasterio.band(ds, b),
-            destination=dst_rgb[b-1],
-            src_transform=ds.transform,
-            src_crs=ds.crs,
-            dst_transform=out_transform,
-            dst_crs=out_crs,
-            resampling=WarpResampling.bilinear,
-        )
-
-    # Reprojetar banda Alpha (banda 4)
+    # Reprojeta peso para o grid final
+    peso = np.zeros((height, width), dtype=np.float32)
     reproject(
-        source=rasterio.band(ds, 4),
-        destination=dst_alpha[0],
+        source=dist,
+        destination=peso,
         src_transform=ds.transform,
         src_crs=ds.crs,
         dst_transform=out_transform,
         dst_crs=out_crs,
         resampling=WarpResampling.bilinear,
     )
+    del dist
+    print(f"    peso max={peso.max():.3f}")
 
-    alpha_2d = dst_alpha[0]  # shape (height, width)
+    # Lê todas as bandas
+    src_data = ds.read().astype(np.float32)
+    dst_data = np.zeros((4, height, width), dtype=np.float32)
+    reproject(
+        source=src_data,
+        destination=dst_data,
+        src_transform=ds.transform,
+        src_crs=ds.crs,
+        dst_transform=out_transform,
+        dst_crs=out_crs,
+        resampling=WarpResampling.bilinear,
+    )
+    del src_data
 
-    # --- FEATHERING: peso = distância euclidiana até a borda do alpha ---
-    # Mascara binária: pixel válido onde alpha > 0
-    mask_valido = alpha_2d > 0
-
-    if not mask_valido.any():
-        print(f"    AVISO: {name} sem pixels válidos após reprojeção, pulando.")
-        continue
-
-    # Distância de cada pixel válido até a borda (pixels inválidos ou borda da imagem)
-    dist = distance_transform_edt(mask_valido)   # em pixels
-
-    # Normaliza pelo máximo para ter peso 0→1
-    dist_max = dist.max()
-    if dist_max > 0:
-        peso = dist / dist_max
-    else:
-        peso = mask_valido.astype(np.float64)
-
-    # Acumula: RGB ponderado pelo peso
-    for c in range(3):
-        accum_rgb[c] += dst_rgb[c] * peso
-
-    accum_alpha += alpha_2d * peso   # alpha também ponderado
+    accum_rgb   += dst_data[:3] * peso
+    accum_alpha += dst_data[3]  * peso
     accum_w     += peso
+    del dst_data, peso
+    print(f"    OK")
 
-    print(f"    dist_max={dist_max:.1f}px  pixels_validos={mask_valido.sum()}")
-
-# 4. Normalizar pela soma dos pesos
+# ── 5. Normalizar ─────────────────────────────────────────────────────────────
 print("  Normalizando...")
 valido = accum_w > 0
 
-resultado_rgb   = np.zeros((3, height, width), dtype=out_dtype)
-resultado_alpha = np.zeros((height, width),    dtype=out_dtype)
+resultado = np.zeros((4, height, width), dtype=out_dtype)
+tmp = np.zeros((height, width), dtype=np.float32)
 
 for c in range(3):
-    tmp = np.where(valido, accum_rgb[c] / accum_w, 0)
-    resultado_rgb[c] = np.clip(tmp, 0, np.iinfo(out_dtype).max).astype(out_dtype)
+    np.divide(accum_rgb[c], accum_w, out=tmp, where=valido)
+    resultado[c] = np.clip(tmp, iinfo.min, iinfo.max).astype(out_dtype)
 
-tmp_alpha = np.where(valido, accum_alpha / accum_w, 0)
-resultado_alpha = np.clip(tmp_alpha, 0, np.iinfo(out_dtype).max).astype(out_dtype)
+np.divide(accum_alpha, accum_w, out=tmp, where=valido)
+resultado[3] = np.clip(tmp, iinfo.min, iinfo.max).astype(out_dtype)
 
-# 5. Empilhar em 4 bandas (RGB + Alpha)
-resultado = np.concatenate([
-    resultado_rgb,
-    resultado_alpha[np.newaxis, ...]
-], axis=0)
+del accum_rgb, accum_alpha, accum_w, valido, tmp
 
-print(f"  Shape final: {resultado.shape}, dtype={resultado.dtype}")
-
-# 6. Salvar
-output_path = r"G:\FS_BIOENERGIA\FAZ_MBOI\mosaicos\MOSAICO\mosaico_final_suave5.tif"
-print(f"  Salvando em: {output_path}")
+# ── 6. Salvar com ColorInterp correto ────────────────────────────────────────
+output_path = r"G:\FS_BIOENERGIA\FAZ_MBOI\mosaicos\MOSAICO\mBOI_MOSBAIXO.tif"
+print(f"  Salvando: {output_path}")
 
 with rasterio.open(
     output_path, 'w',
@@ -144,19 +114,59 @@ with rasterio.open(
     dtype=out_dtype,
     crs=out_crs,
     transform=out_transform,
-    compress='lzw',
-) as dest:
-    dest.write(resultado)
+    compress='deflate',       # mesmo do original
+    predictor=2,              # melhora compressão deflate em imagens uint8
+    tiled=True,
+    blockxsize=512,
+    blockysize=512,
+    interleave='pixel',       # mesmo do original
+    nodata=None,              # SEM nodata — transparência só pelo alpha
+) as dst:
+    dst.write(resultado)
 
-    # Overviews FORA do with de escrita — reabre em modo r+
-print("  Construindo overviews...")
-with rasterio.open(output_path, 'r+') as dest:
-    overviews = [2, 4, 8, 16, 32, 64]
-    dest.build_overviews(overviews, Resampling.nearest)
-    dest.update_tags(ns='rio_overview', resampling='nearest')
+    # ── ColorInterp: força R/G/B/Alpha explicitamente ──────────────────────
+    dst.colorinterp = (
+        ColorInterp.red,
+        ColorInterp.green,
+        ColorInterp.blue,
+        ColorInterp.alpha,      # <-- isso é o que faltava
+    )
 
-# 7. Fechar datasets originais
+del resultado
+
+# ── 7. Overviews ──────────────────────────────────────────────────────────────
+print("  Overviews...")
+with rasterio.open(output_path, 'r+') as dst:
+    dst.build_overviews([2, 4, 8, 16, 32, 64], WarpResampling.nearest)
+    dst.update_tags(ns='rio_overview', resampling='nearest')
+
 for ds in datasets:
     ds.close()
 
-print("=== Processo concluído com sucesso ===")
+# ── 8. Relatório final ────────────────────────────────────────────────────────
+print("\n" + "="*60)
+print("RELATÓRIO DO ARQUIVO DE SAÍDA")
+print("="*60)
+with rasterio.open(output_path) as ds:
+    alpha = ds.read(4)
+    validos = (alpha > 0).sum()
+    total   = alpha.size
+    res_x   = ds.transform.a
+    res_y   = abs(ds.transform.e)
+    size_mb = os.path.getsize(output_path) / (1024**2)
+
+    print(f"  Arquivo     : {output_path}")
+    print(f"  Tamanho px  : {ds.width} x {ds.height}")
+    print(f"  Bandas      : {ds.count}  {ds.dtypes}")
+    print(f"  ColorInterp : {ds.colorinterp}")
+    print(f"  CRS         : {ds.crs}")
+    print(f"  Resolução   : {res_x:.4f} x {res_y:.4f} m/px")
+    print(f"  Extent      : {ds.bounds}")
+    print(f"  Nodata      : {ds.nodata}")
+    print(f"  Compressão  : {ds.compression}")
+    print(f"  Tiled       : {ds.is_tiled}")
+    print(f"  Overviews   : {ds.overviews(1)}")
+    print(f"  Alpha válido: {validos:,} / {total:,} px ({100*validos/total:.1f}%)")
+    print(f"  Tamanho disk: {size_mb:.1f} MB")
+print("="*60)
+print("=== Concluído ===")

@@ -1,0 +1,131 @@
+{
+  "arquivo": "result.tif",
+  "tamanho_disco": 1101704688,
+  "tamanho_disco_human": "1.03 GB",
+  "driver": "GTiff",
+  "largura": 45758,
+  "altura": 42827,
+  "bandas": 4,
+  "megapixels": 1959.68,
+  "dtype": "uint8",
+  "crs": "EPSG:31981",
+  "is_projected": true,
+  "res_x": 0.0568,
+  "res_y": 0.0568,
+  "gsd_cm": 5.68,
+  "area_ha": 632.2391,
+  "area_km2": 6.322391,
+  "nodata": 0.0,
+  "compressao": "Compression.deflate",
+  "predictor": null,
+  "tiled": true,
+  "block_shapes": [
+    [
+      256,
+      256
+    ],
+    [
+      256,
+      256
+    ],
+    [
+      256,
+      256
+    ],
+    [
+      256,
+      256
+    ]
+  ],
+  "photometric": null,
+  "overviews": [],
+  "overviews_sugeridos": [
+    2,
+    4,
+    8,
+    16,
+    32,
+    64,
+    128,
+    256
+  ],
+  "bigtiff": false,
+  "rotacao": false,
+  "has_alpha": true,
+  "tamanho_raw": 7838711464,
+  "taxa_compressao": 7.12,
+  "ram_estimada_qgis": 23516134392,
+  "ram_estimada_qgis_human": "21.90 GB",
+  "benchmark_tile_ms": 0.28,
+  "band_stats": [
+    {
+      "band": 1,
+      "min": 1.0,
+      "max": 255.0,
+      "mean": 106.4227,
+      "std": 58.2894,
+      "median": 94.0,
+      "pct_valid": 18.86,
+      "is_constant": false,
+      "clipping_low": false,
+      "clipping_high": false
+    },
+    {
+      "band": 2,
+      "min": 1.0,
+      "max": 255.0,
+      "mean": 113.095,
+      "std": 52.5087,
+      "median": 109.0,
+      "pct_valid": 18.86,
+      "is_constant": false,
+      "clipping_low": false,
+      "clipping_high": false
+    },
+    {
+      "band": 3,
+      "min": 1.0,
+      "max": 255.0,
+      "mean": 82.315,
+      "std": 49.5303,
+      "median": 69.0,
+      "pct_valid": 18.86,
+      "is_constant": false,
+      "clipping_low": false,
+      "clipping_high": false
+    },
+    {
+      "band": 4,
+      "min": 1.0,
+      "max": 255.0,
+      "mean": 254.93,
+      "std": 3.5184,
+      "median": 255.0,
+      "pct_valid": 18.86,
+      "is_constant": false,
+      "clipping_low": false,
+      "clipping_high": true
+    }
+  ],
+  "meta_tags": {
+    "DEFAULT": {
+      "AREA_OR_POINT": "Area"
+    },
+    "IMAGE_STRUCTURE": {
+      "COMPRESSION": "DEFLATE",
+      "INTERLEAVE": "PIXEL"
+    }
+  },
+  "problemas": [
+    "Sem overviews internos. QGIS processará resolucao total para qualquer zoom → muito lento.",
+    "Compressao sem PREDICTOR configurado. Usar PREDICTOR=2 melhora compressao e velocidade.",
+    "4 bandas (inclui alpha) → pode reduzir performance de renderizacao no QGIS.",
+    "Arquivo >4GB sem BigTIFF. Pode corromper em ferramentas GDAL mais antigas.",
+    "RAM estimada para QGIS em resolucao total: 21.90 GB. Maquinas com <16GB RAM vao travar.",
+    "Banda 1: apenas 18.9% pixels validos. Alto percentual de NoData.",
+    "Banda 2: apenas 18.9% pixels validos. Alto percentual de NoData.",
+    "Banda 3: apenas 18.9% pixels validos. Alto percentual de NoData.",
+    "Banda 4 com saturacao (clipping alto). Verifique exposicao.",
+    "Banda 4: apenas 18.9% pixels validos. Alto percentual de NoData."
+  ]
+}
