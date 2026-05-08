@@ -1,3 +1,6 @@
 *.tif
 *.tiff
 *.xml
+__pycache__/
+__pycache__
+*.pyc
