@@ -149,14 +149,46 @@ def human_size(size):
     return f"{size:.2f} PB"
 
 
-def run_gdal(cmd, env, timeout=7200):
+def run_gdal(cmd, env, timeout=86400):
+    """
+    Executa um comando GDAL com monitoramento de progresso.
+    Mostra feedback a cada 60s para evitar timeout aparente.
+    """
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
-        if result.returncode != 0:
-            return False, result.stderr[:500]
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env
+        )
+        
+        t_start = time.time()
+        last_feedback = time.time()
+        
+        # Monitorar enquanto o processo roda
+        while process.poll() is None:
+            time.sleep(5)
+            elapsed = time.time() - t_start
+            
+            # Feedback a cada 60 segundos
+            if time.time() - last_feedback >= 60:
+                mins = int(elapsed // 60)
+                secs = int(elapsed % 60)
+                log(f"[CONV] Ainda processando... ({mins:02d}:{secs:02d} decorridos)")
+                last_feedback = time.time()
+            
+            # Verificar timeout
+            if elapsed > timeout:
+                process.kill()
+                return False, f"Timeout apos {elapsed:.0f}s"
+        
+        stdout, stderr = process.communicate()
+        
+        if process.returncode != 0:
+            return False, stderr[:500] if stderr else f"Codigo de erro: {process.returncode}"
         return True, ""
-    except subprocess.TimeoutExpired:
-        return False, "Timeout"
+        
     except Exception as e:
         return False, str(e)
 
