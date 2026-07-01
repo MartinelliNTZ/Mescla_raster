@@ -3,11 +3,14 @@
 MOSAICO MERGE + DIAGNÓSTICO (ECW) v3
 =====================================
 v3: 
-  - Se apenas 1 arquivo: apenas converte formato (ECW <-> TIFF)
-  - Se 2+ arquivos: mosaico feathering completo
-  - Saída definida pela extensão do OUTPUT_FILENAME (.ecw ou .tif)
-  - Processamento em blocos (tiles) para evitar erro de memória
-  - Timestamp [HH:MM:SS] em todas as mensagens
+  - 1 arquivo = conversão de formato
+  - 2+ arquivos = mosaico feathering
+  - Saída .ecw ou .tif (pela extensão)
+  - Processamento em blocos (tiles)
+  - Timestamp [HH:MM:SS]
+  
+NOTA: ECW escrita requer licença ERDAS (não disponível no QGIS gratuito).
+      Se não for possível escrever ECW, faz fallback para TIFF automaticamente.
 """
 
 import os
@@ -46,10 +49,8 @@ def log(msg):
 
 INPUT_DIR  = r"G:\BR070\ETAPA2\OUTPUT\ORTOMOSAICO_FINAL_01\e2"
 OUTPUT_DIR = r"G:\BR070\ETAPA2\OUTPUT\ORTOMOSAICO_FINAL_01\e2"
-OUTPUT_FILENAME = "mosaico_final.ecw"
+OUTPUT_FILENAME = "mosaico_final.ecw"   # .ecw ou .tif
 INPUT_EXTENSIONS = ["*.tif", "*.tiff", "*.ecw"]
-
-OUTPUT_COMPRESS   = "deflate"
 OUTPUT_PREDICTOR  = 2
 OUTPUT_TILED      = True
 OUTPUT_BLOCK_X    = 512
@@ -67,42 +68,96 @@ RUN_DIAGNOSTIC_INPUTS  = True
 RUN_DIAGNOSTIC_OUTPUT  = True
 RUN_MOSAIC             = True
 KEEP_TEMP_TIFFS        = False
-
-# ── Processamento em blocos (tiles) para evitar falta de RAM ──
-#   O merge completo de rasters gigantes pode exigir >500 GB RAM.
-#   Processamos em blocos de TILE_SIZE x TILE_SIZE pixels.
-TILE_SIZE = 4096  # pixels por bloco (ajuste conforme RAM disponivel)
+TILE_SIZE = 4096
 
 # ╔══════════════════════════════════════════════════════════════╗
-# ║       CONFIGURAÇÃO GDAL — QGIS + PLUGIN ECW                ║
+# ║       CONFIGURAÇÃO GDAL — QGIS                              ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 QGIS_VERSIONS = [
-    {"path": r"C:\Program Files\QGIS 3.16", "gdal_plugins": r"bin\gdalplugins", "bin": r"bin\gdal_translate.exe"},
-    {"path": r"C:\Program Files\QGIS 3.34.12", "gdal_plugins": r"apps\gdal\lib\gdalplugins", "bin": r"bin\gdal_translate.exe"},
-    {"path": r"C:\Program Files\QGIS 3.40.14", "gdal_plugins": r"apps\gdal\lib\gdalplugins", "bin": r"bin\gdal_translate.exe"},
     {"path": r"C:\Program Files\QGIS 4.0.0", "gdal_plugins": r"apps\gdal\lib\gdalplugins", "bin": r"bin\gdal_translate.exe"},
+    {"path": r"C:\Program Files\QGIS 3.40.14", "gdal_plugins": r"apps\gdal\lib\gdalplugins", "bin": r"bin\gdal_translate.exe"},
+    {"path": r"C:\Program Files\QGIS 3.34.12", "gdal_plugins": r"apps\gdal\lib\gdalplugins", "bin": r"bin\gdal_translate.exe"},
+    {"path": r"C:\Program Files\QGIS 3.16", "gdal_plugins": r"bin\gdalplugins", "bin": r"bin\gdal_translate.exe"},
 ]
 
 
-def setup_gdal_environment():
+def find_best_gdal():
+    """
+    Procura o melhor GDAL do QGIS.
+    Testa se tem ECW com escrita. Se não tiver, retorna o melhor disponível.
+    """
+    best = None
+    
     for qver in QGIS_VERSIONS:
         gdal_bin = os.path.join(qver["path"], qver["bin"])
         plugin_dir = os.path.join(qver["path"], qver["gdal_plugins"])
-        ecw_plugin = os.path.join(plugin_dir, "gdal_ECW_JP2ECW.dll")
+        
         if os.path.exists(gdal_bin) and os.path.exists(plugin_dir):
-            has_ecw = os.path.exists(ecw_plugin) or any("ECW" in f for f in os.listdir(plugin_dir))
+            has_ecw = any("ECW" in f for f in os.listdir(plugin_dir))
             if has_ecw:
                 env = os.environ.copy()
                 env["GDAL_DRIVER_PATH"] = plugin_dir
+                
                 try:
                     result = subprocess.run([gdal_bin, "--version"], capture_output=True, text=True, timeout=10, env=env)
                     if result.returncode == 0:
                         log(f"GDAL: {qver['path']}")
                         log(f"Plugin ECW: {plugin_dir}")
-                        return gdal_bin, env
+                        if best is None:
+                            best = (gdal_bin, env)
                 except Exception: pass
+    
+    if best:
+        return best
     return None, None
+
+
+def can_write_ecw(gdal_bin, env):
+    """Testa se o GDAL consegue CRIAR arquivos ECW."""
+    test_tiff = os.path.join(tempfile.gettempdir(), f"test_write_{int(time.time())}.tif")
+    test_ecw = test_tiff.replace('.tif', '.ecw')
+    try:
+        # Criar TIFF 1x1 válido via rasterio
+        with rasterio.open(test_tiff, 'w', driver='GTiff', height=1, width=1, count=3, dtype='uint8', crs='EPSG:4326', transform=rasterio.Affine(1, 0, 0, 0, -1, 0)) as dst:
+            dst.write(np.zeros((3, 1, 1), dtype='uint8'))
+        
+        # Tentar converter para ECW
+        cmd = [gdal_bin, '-of', 'ECW', '-co', 'TARGET=90', test_tiff, test_ecw]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, env=env)
+        
+        if result.returncode == 0 and os.path.exists(test_ecw):
+            os.remove(test_ecw)
+            os.remove(test_tiff)
+            return True
+        else:
+            erro = result.stderr[:300] if result.stderr else "sem saida de erro"
+            log(f"  ECW escrita NAO disponivel: {erro.strip()}")
+            os.remove(test_tiff)
+            return False
+    except Exception as e:
+        try:
+            if os.path.exists(test_tiff): os.remove(test_tiff)
+            if os.path.exists(test_ecw): os.remove(test_ecw)
+        except Exception: pass
+        return False
+
+
+def setup_gdal_environment():
+    """Retorna (gdal_bin, env, pode_escrever_ecw)."""
+    gdal_bin, env = find_best_gdal()
+    pode_ecw = False
+    
+    if gdal_bin:
+        log(f"Testando se ECW pode ser escrito...")
+        pode_ecw = can_write_ecw(gdal_bin, env)
+        if pode_ecw:
+            log(f"✓ ECW com suporte a ESCRITA")
+        else:
+            log(f"✗ ECW somente LEITURA (QGIS gratuito sem licenca ERDAS)")
+            log(f"  → Saida ECW NAO sera possivel. Usando TIFF como fallback.")
+    
+    return gdal_bin, env, pode_ecw
 
 
 # ╔══════════════════════════════════════════════════════════════╗
@@ -118,7 +173,6 @@ def human_size(size):
 
 
 def run_gdal_monitor(cmd, env, timeout=86400):
-    """Executa GDAL com monitoramento a cada 60s."""
     try:
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
         t_start = time.time()
@@ -172,43 +226,8 @@ def convert_tiff_to_ecw(tiff_path, ecw_path, gdal_cmd, env):
         return False
 
 
-def convert_format(input_path, output_path, gdal_cmd, env):
-    """
-    Converte formato de um arquivo raster usando gdal_translate.
-    Detecta automaticamente o formato de entrada/saída pela extensão.
-    """
-    ext_in = os.path.splitext(input_path)[1].lower()
-    ext_out = os.path.splitext(output_path)[1].lower()
-    
-    log(f"[CONV] {ext_in.upper()} -> {ext_out.upper()}: {os.path.basename(input_path)}")
-    
-    # Determinar formato de saída
-    of_map = {'.tif': 'GTiff', '.tiff': 'GTiff', '.ecw': 'ECW'}
-    of = of_map.get(ext_out, 'GTiff')
-    
-    # Parâmetros específicos por formato
-    co_params = []
-    if of == 'GTiff':
-        co_params = ['-co', 'COMPRESS=DEFLATE', '-co', 'PREDICTOR=2', '-co', 'TILED=YES', '-co', 'BIGTIFF=IF_SAFER']
-    elif of == 'ECW':
-        co_params = ['-co', f'TARGET={ECW_TARGET_PERCENT}', '-co', 'LARGE_OK=YES']
-    
-    cmd = [gdal_cmd, '-of', of] + co_params + [input_path, output_path]
-    
-    t_start = time.time()
-    ok, err = run_gdal_monitor(cmd, env, timeout=86400)
-    t_elapsed = time.time() - t_start
-    if ok:
-        size = os.path.getsize(output_path)
-        log(f"[CONV] OK! ({t_elapsed:.0f}s) {human_size(size)}")
-        return True
-    else:
-        log(f"[CONV] ERRO ({t_elapsed:.0f}s): {err}")
-        return False
-
-
 # ╔══════════════════════════════════════════════════════════════╗
-# ║              FUNÇÕES DE DIAGNÓSTICO                         ║
+# ║              DIAGNÓSTICO (resumido)                         ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 
@@ -246,24 +265,10 @@ def band_statistics(ds, max_sample_pixels=DIAG_MAX_SAMPLE_PIXELS):
     return stats, scale
 
 
-def benchmark_tile_read(ds):
-    block_shapes = ds.block_shapes
-    if not block_shapes or block_shapes[0][0] is None: return None
-    tile_h, tile_w = block_shapes[0]
-    cx, cy = ds.width // 2, ds.height // 2
-    col_off = max(0, cx - tile_w // 2)
-    row_off = max(0, cy - tile_h // 2)
-    win = Window(col_off, row_off, min(tile_w, ds.width - col_off), min(tile_h, ds.height - row_off))
-    t0 = time.perf_counter()
-    ds.read(1, window=win)
-    return time.perf_counter() - t0
-
-
 def suggested_overview_levels(width, height, tile_size=256):
     levels, factor, w, h = [], 2, width, height
     while w > tile_size or h > tile_size:
-        levels.append(factor)
-        w //= 2; h //= 2; factor *= 2
+        levels.append(factor); w //= 2; h //= 2; factor *= 2
         if factor > 1024: break
     return levels
 
@@ -337,7 +342,17 @@ def diagnostic_report(path):
             meta_tags = extract_metadata_tags(ds)
             suggested_ovrs = suggested_overview_levels(width, height, tw or 256)
             band_stats, _ = band_statistics(ds)
-            io_time = benchmark_tile_read(ds)
+            io_time = None
+            try:
+                tile_h, tile_w = block_shapes[0]
+                cx, cy = ds.width // 2, ds.height // 2
+                col_off = max(0, cx - tile_w // 2)
+                row_off = max(0, cy - tile_h // 2)
+                win = Window(col_off, row_off, min(tile_w, ds.width - col_off), min(tile_h, ds.height - row_off))
+                t0 = time.perf_counter()
+                ds.read(1, window=win)
+                io_time = time.perf_counter() - t0
+            except Exception: pass
             ci = get_color_interp(ds)
             problems = []
             if dtype == "float32": problems.append("Raster FLOAT32 -> muito pesado")
@@ -395,7 +410,7 @@ def save_diagnostic_json(report, output_path):
 
 
 # ╔══════════════════════════════════════════════════════════════╗
-# ║            MOSAICO EM BLOCOS (TILED)                       ║
+# ║         MOSAICO EM BLOCOS (TILED)                           ║
 # ╚══════════════════════════════════════════════════════════════╝
 
 
@@ -421,10 +436,6 @@ def ensure_4band_rgb(ds):
 
 
 def run_mosaic_tiled(input_files, output_path):
-    """
-    Mosaico feathering processado em blocos (tiles) para economizar RAM.
-    Em vez de carregar tudo na memória, processa bloco por bloco.
-    """
     is_ecw_output = output_path.lower().endswith('.ecw')
     
     log("=" * 60)
@@ -435,25 +446,18 @@ def run_mosaic_tiled(input_files, output_path):
     for f in input_files: log(f"  - {os.path.basename(f)}")
     log(f"Saida: {output_path}")
 
-    # Abrir datasets
     log("[MOSAICO] Abrindo datasets...")
     datasets = [rasterio.open(f) for f in input_files]
     ref_ds = datasets[0]
     out_crs, out_dtype = ref_ds.crs, ref_ds.dtypes[0]
 
-    # Calcular grid total sem carregar tudo na RAM
     log("[MOSAICO] Calculando grid total...")
     try:
-        # Merge com method='first' mas apenas para 1 banda (mais leve)
-        # Usamos window para reduzir ainda mais se necessário
         mosaic_ref, out_transform = merge(datasets, method='first')
         _, height, width = mosaic_ref.shape
         del mosaic_ref
     except MemoryError:
-        log("[MOSAICO] ERRO: Memoria insuficiente para calcular grid total!")
-        log("[MOSAICO] Os rasters sao muito grandes para processar em RAM.")
-        log("[MOSAICO] Alternativa: converta cada ECW para TIFF separadamente")
-        log("[MOSAICO] e depois use gdal_merge.py ou QGIS para unir.")
+        log("[MOSAICO] ERRO: Memoria insuficiente!")
         for ds in datasets: ds.close()
         return None
     except Exception as e:
@@ -463,12 +467,6 @@ def run_mosaic_tiled(input_files, output_path):
 
     log(f"[MOSAICO] Grid: {width}x{height} dtype={out_dtype}")
     log(f"[MOSAICO] Megapixels: {(width*height)/1e6:.0f} MP")
-    
-    # Estimar RAM necessária
-    bpp = {"uint8": 1, "uint16": 2, "float32": 4}.get(out_dtype, 1)
-    ram_gb = width * height * 4 * bpp * 3 / (1024**3)
-    log(f"[MOSAICO] RAM estimada (full): {ram_gb:.0f} GB")
-    log(f"[MOSAICO] Usando blocos de {TILE_SIZE}x{TILE_SIZE} para reduzir RAM")
 
     if "int" in str(out_dtype):
         iinfo = np.iinfo(out_dtype)
@@ -476,32 +474,27 @@ def run_mosaic_tiled(input_files, output_path):
     else:
         dtype_min, dtype_max = 0, 1.0
 
-    # Salvar TIFF intermediário
     tiff_intermediario = output_path
     if is_ecw_output:
         tiff_intermediario = output_path.replace('.ecw', '_temp.tif')
 
-    log(f"[MOSAICO] Criando arquivo TIFF de saida...")
+    log(f"[MOSAICO] Criando TIFF de saida...")
     os.makedirs(os.path.dirname(tiff_intermediario), exist_ok=True)
     
-    # Criar o arquivo de saída vazio
     with rasterio.open(tiff_intermediario, 'w', driver='GTiff',
                        height=height, width=width, count=4, dtype=out_dtype,
                        crs=out_crs, transform=out_transform,
                        compress=OUTPUT_COMPRESS, predictor=OUTPUT_PREDICTOR,
                        tiled=OUTPUT_TILED, blockxsize=OUTPUT_BLOCK_X, blockysize=OUTPUT_BLOCK_Y,
                        interleave=OUTPUT_INTERLEAVE, nodata=OUTPUT_NODATA) as dst:
-        # Escrever um bloco vazio para inicializar
         dst.write(np.zeros((4, height, width), dtype=out_dtype))
     
-    log(f"[MOSAICO] Arquivo criado. Processando por blocos...")
+    log(f"[MOSAICO] Processando por blocos...")
     
-    # Processar por blocos
     n_tiles_x = math.ceil(width / TILE_SIZE)
     n_tiles_y = math.ceil(height / TILE_SIZE)
     total_tiles = n_tiles_x * n_tiles_y
     tile_count = 0
-    
     t_mosaic_start = time.time()
     
     for ty in range(n_tiles_y):
@@ -511,134 +504,87 @@ def run_mosaic_tiled(input_files, output_path):
             row_off = ty * TILE_SIZE
             tw = min(TILE_SIZE, width - col_off)
             th = min(TILE_SIZE, height - row_off)
-            
             win = Window(col_off, row_off, tw, th)
             
-            log(f"[MOSAICO] Bloco {tile_count}/{total_tiles} ({tx+1},{ty+1}) - {tw}x{th} em ({col_off},{row_off})")
+            log(f"[MOSAICO] Bloco {tile_count}/{total_tiles} ({tx+1},{ty+1}) - {tw}x{th}")
             t_tile = time.time()
             
-            # Acumuladores para este bloco
             accum_rgb = np.zeros((3, th, tw), dtype=np.float32)
             accum_alpha = np.zeros((th, tw), dtype=np.float32)
             accum_w = np.zeros((th, tw), dtype=np.float32)
             
-            # Processar cada dataset para este bloco
             for ds_idx, ds in enumerate(datasets):
-                name = os.path.basename(ds.name)
-                
-                # Ler dados do dataset na região do bloco (reprojetado)
                 try:
-                    # Reprojetar a região do bloco
-                    # Primeiro, ler os dados de origem
                     src_data = ds.read().astype(np.float32)
-                    
-                    # Criar array de destino para este bloco
                     dst_rgb = np.zeros((3, th, tw), dtype=np.float32)
                     dst_alpha = np.zeros((th, tw), dtype=np.float32)
                     
-                    # Reprojetar RGB
-                    reproject(
-                        source=src_data[:3] if ds.count >= 3 else src_data,
-                        destination=dst_rgb,
-                        src_transform=ds.transform,
-                        src_crs=ds.crs,
-                        dst_transform=out_transform,
-                        dst_crs=out_crs,
-                        resampling=WarpResampling.bilinear,
-                        dst_window=win
-                    )
+                    reproject(source=src_data[:3] if ds.count >= 3 else src_data, destination=dst_rgb,
+                              src_transform=ds.transform, src_crs=ds.crs,
+                              dst_transform=out_transform, dst_crs=out_crs,
+                              resampling=WarpResampling.bilinear, dst_window=win)
                     
-                    # Reprojetar alpha
                     if ds.count >= 4:
-                        reproject(
-                            source=src_data[3:4],
-                            destination=dst_alpha,
-                            src_transform=ds.transform,
-                            src_crs=ds.crs,
-                            dst_transform=out_transform,
-                            dst_crs=out_crs,
-                            resampling=WarpResampling.bilinear,
-                            dst_window=win
-                        )
+                        reproject(source=src_data[3:4], destination=dst_alpha,
+                                  src_transform=ds.transform, src_crs=ds.crs,
+                                  dst_transform=out_transform, dst_crs=out_crs,
+                                  resampling=WarpResampling.bilinear, dst_window=win)
                     else:
-                        # Criar alpha a partir da máscara
                         try:
                             mask = ds.dataset_mask().astype(np.float32)
-                            reproject(
-                                source=mask,
-                                destination=dst_alpha,
-                                src_transform=ds.transform,
-                                src_crs=ds.crs,
-                                dst_transform=out_transform,
-                                dst_crs=out_crs,
-                                resampling=WarpResampling.bilinear,
-                                dst_window=win
-                            )
+                            reproject(source=mask, destination=dst_alpha,
+                                      src_transform=ds.transform, src_crs=ds.crs,
+                                      dst_transform=out_transform, dst_crs=out_crs,
+                                      resampling=WarpResampling.bilinear, dst_window=win)
                         except Exception:
                             dst_alpha.fill(dtype_max)
                     
-                    # Peso baseado em distance transform
                     mask = (dst_alpha > 0).astype(np.float32)
                     dist = distance_transform_edt(mask).astype(np.float32)
                     dmax = dist.max()
                     if dmax > 0: dist /= dmax
-                    
                     peso = dist
                     if peso.max() == 0:
                         peso = dst_alpha / dtype_max
-                        if peso.max() == 0:
-                            peso = np.ones_like(peso, dtype=np.float32) * 0.001
+                        if peso.max() == 0: peso = np.ones_like(peso, dtype=np.float32) * 0.001
                     
                     accum_rgb += dst_rgb * peso
                     accum_alpha += dst_alpha * peso
                     accum_w += peso
-                    
                 except Exception as e:
-                    log(f"[MOSAICO]   Erro processando {name} no bloco: {e}")
+                    log(f"[MOSAICO]   Erro bloco: {e}")
             
-            # Normalizar e escrever bloco
             valido = accum_w > 0
-            resultado_bloco = np.zeros((4, th, tw), dtype=out_dtype)
+            res_bloco = np.zeros((4, th, tw), dtype=out_dtype)
             tmp = np.zeros((th, tw), dtype=np.float32)
-            
             for c in range(3):
                 np.divide(accum_rgb[c], accum_w, out=tmp, where=valido)
-                resultado_bloco[c] = np.clip(tmp, dtype_min, dtype_max).astype(out_dtype)
-            
+                res_bloco[c] = np.clip(tmp, dtype_min, dtype_max).astype(out_dtype)
             np.divide(accum_alpha, accum_w, out=tmp, where=valido)
-            resultado_bloco[3] = np.clip(tmp, dtype_min, dtype_max).astype(out_dtype)
+            res_bloco[3] = np.clip(tmp, dtype_min, dtype_max).astype(out_dtype)
             
-            # Escrever bloco no arquivo
             with rasterio.open(tiff_intermediario, 'r+') as dst:
-                dst.write(resultado_bloco, window=win)
+                dst.write(res_bloco, window=win)
             
-            del accum_rgb, accum_alpha, accum_w, valido, tmp, resultado_bloco
-            
-            elapsed = time.time() - t_tile
-            total_elapsed = time.time() - t_mosaic_start
-            log(f"[MOSAICO] Bloco OK ({elapsed:.1f}s) - Total: {total_elapsed/60:.1f}min")
+            del accum_rgb, accum_alpha, accum_w, valido, tmp, res_bloco
+            log(f"[MOSAICO] Bloco OK ({time.time()-t_tile:.1f}s)")
     
-    # Fechar datasets
     for ds in datasets: ds.close()
     
-    # Overviews
-    log(f"[MOSAICO] Gerando overviews...")
+    log(f"[MOSAICO] Overviews...")
     t0_ovr = time.time()
     with rasterio.open(tiff_intermediario, 'r+') as dst:
         dst.build_overviews(OVERVIEW_LEVELS, OVERVIEW_RESAMPLING)
         dst.update_tags(ns='rio_overview', resampling='nearest')
     log(f"[MOSAICO] Overviews OK ({time.time()-t0_ovr:.1f}s)")
 
-    # Converter para ECW se necessario
     if is_ecw_output:
-        gdal_cmd, env = setup_gdal_environment()
-        if gdal_cmd:
+        gdal_cmd, env, pode_ecw = setup_gdal_environment()
+        if gdal_cmd and pode_ecw:
             tiff_size = os.path.getsize(tiff_intermediario) / (1024**3)
             log(f"[MOSAICO] Convertendo TIFF ({tiff_size:.1f} GB) -> ECW...")
             if convert_tiff_to_ecw(tiff_intermediario, output_path, gdal_cmd, env):
-                if not KEEP_TEMP_TIFFS:
-                    os.remove(tiff_intermediario)
-                    log(f"[MOSAICO] Temp removido")
+                if not KEEP_TEMP_TIFFS: os.remove(tiff_intermediario)
                 log(f"[MOSAICO] ECW concluido!")
             else:
                 log(f"[MOSAICO] Falha ECW. Mantendo TIFF.")
@@ -646,10 +592,10 @@ def run_mosaic_tiled(input_files, output_path):
                 shutil.move(tiff_intermediario, fallback)
                 output_path = fallback
         else:
-            log(f"[MOSAICO] Plugin ECW indisponivel. Mantendo TIFF.")
-            fallback = output_path.replace('.ecw', '_fallback.tif')
-            shutil.move(tiff_intermediario, fallback)
-            output_path = fallback
+            log(f"[MOSAICO] ECW indisponivel (sem licenca). Mantendo TIFF.")
+            final_tiff = output_path.replace('.ecw', '.tif')
+            shutil.move(tiff_intermediario, final_tiff)
+            output_path = final_tiff
 
     log(f"[MOSAICO] Concluido: {output_path}")
     return output_path
@@ -672,21 +618,26 @@ def main():
     log(f"OUTPUT_FILE: {OUTPUT_FILENAME}")
     log(f"FORMATOS   : {', '.join(INPUT_EXTENSIONS)}")
 
-    # Detectar formato de saída
     output_ext = os.path.splitext(OUTPUT_FILENAME)[1].lower()
-    log(f"Formato de saida: {output_ext.upper()}")
+    log(f"Formato saida desejado: {output_ext.upper()}")
 
-    # Configurar GDAL
-    gdal_cmd, gdal_env = setup_gdal_environment()
+    gdal_cmd, gdal_env, pode_escrever_ecw = setup_gdal_environment()
+    
     if gdal_cmd:
-        log("Plugin ECW OK!")
+        if pode_escrever_ecw:
+            log("✓ Plugin ECW completo (leitura+escrita)")
+        else:
+            log("✗ Plugin ECW apenas LEITURA")
+            if output_ext == '.ecw':
+                log("  → ALTERANDO SAIDA PARA .tif (ECW nao pode ser criado)")
+                global OUTPUT_FILENAME
+                OUTPUT_FILENAME = OUTPUT_FILENAME.replace('.ecw', '.tif')
+                log(f"  → Novo OUTPUT_FILENAME: {OUTPUT_FILENAME}")
     else:
-        log("ATENCAO: Plugin ECW nao encontrado")
+        log("ATENCAO: Nenhum GDAL encontrado")
 
-    # Criar output dir
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # Encontrar arquivos
     input_files = []
     for pattern in INPUT_EXTENSIONS:
         input_files.extend(glob.glob(os.path.join(INPUT_DIR, pattern)))
@@ -702,69 +653,56 @@ def main():
     for i, f in enumerate(input_files, 1):
         log(f"  [{i}] ({os.path.splitext(f)[1].upper():>5}) {human_size(os.path.getsize(f)):>8}  {os.path.basename(f)}")
 
-    # ── SE FOR APENAS 1 ARQUIVO: CONVERTER FORMATO ─────────────────────
+    # ── 1 ARQUIVO: CONVERSÃO ───────────────────────────────────
     if len(input_files) == 1:
         log(f"")
         log("=" * 60)
-        log(" MODO CONVERSAO: 1 arquivo - apenas convertendo formato")
+        log(" MODO CONVERSAO")
         log("=" * 60)
         
         input_file = input_files[0]
         input_ext = os.path.splitext(input_file)[1].lower()
         output_path = os.path.join(OUTPUT_DIR, OUTPUT_FILENAME)
         
-        # Se entrada e saída são o mesmo formato, avisar
         if input_ext == output_ext:
-            log(f"AVISO: Entrada e saida sao o mesmo formato ({input_ext}).")
-            log(f"Copiando arquivo...")
+            log(f"Mesmo formato. Copiando...")
             shutil.copy2(input_file, output_path)
             log(f"Copiado: {output_path}")
         else:
-            # Precisa converter
-            if gdal_cmd:
-                log(f"Convertendo {input_ext.upper()} -> {output_ext.upper()}...")
-                
-                # Se entrada é ECW, primeiro converte para TIFF temporário
-                if input_ext == '.ecw':
-                    temp_tiff = os.path.join(tempfile.gettempdir(), f"temp_conv_{int(time.time())}.tif")
-                    if convert_ecw_to_tiff(input_file, temp_tiff, gdal_cmd, gdal_env):
-                        if output_ext == '.tif':
-                            # Quer TIFF como saída
-                            shutil.move(temp_tiff, output_path)
-                            log(f"Resultado: {output_path}")
-                        elif output_ext == '.ecw':
-                            # Quer ECW como saída (converter TIFF -> ECW)
-                            if convert_tiff_to_ecw(temp_tiff, output_path, gdal_cmd, gdal_env):
-                                os.remove(temp_tiff)
-                                log(f"Resultado: {output_path}")
-                            else:
-                                log(f"Falha na conversao para ECW. Mantendo TIFF.")
-                                shutil.move(temp_tiff, output_path.replace('.ecw', '.tif'))
-                    else:
-                        log(f"ERRO: Falha na conversao ECW -> TIFF")
-                elif input_ext in ('.tif', '.tiff') and output_ext == '.ecw':
-                    # TIFF -> ECW direto
+            log(f"Convertendo {input_ext.upper()} -> {output_ext.upper()}...")
+            
+            if input_ext == '.ecw' and gdal_cmd:
+                temp_tiff = os.path.join(tempfile.gettempdir(), f"temp_conv_{int(time.time())}.tif")
+                if convert_ecw_to_tiff(input_file, temp_tiff, gdal_cmd, gdal_env):
+                    if output_ext == '.tif':
+                        shutil.move(temp_tiff, output_path)
+                        log(f"OK: {output_path}")
+                    elif output_ext == '.ecw':
+                        if pode_escrever_ecw and convert_tiff_to_ecw(temp_tiff, output_path, gdal_cmd, gdal_env):
+                            os.remove(temp_tiff)
+                            log(f"OK: {output_path}")
+                        else:
+                            log(f"ECW nao viavel. Salvando como TIFF.")
+                            shutil.move(temp_tiff, output_path.replace('.ecw', '.tif'))
+            elif input_ext in ('.tif', '.tiff') and output_ext == '.ecw':
+                if pode_escrever_ecw and gdal_cmd:
                     if not convert_tiff_to_ecw(input_file, output_path, gdal_cmd, gdal_env):
-                        log(f"ERRO: Falha na conversao TIFF -> ECW")
+                        log(f"ERRO: Falha conversao TIFF -> ECW")
                 else:
-                    # Outros formatos: usar gdal_translate genérico
-                    if not convert_format(input_file, output_path, gdal_cmd, gdal_env):
-                        log(f"ERRO: Falha na conversao")
+                    log(f"ECW nao viavel (sem licenca). Copiando como TIFF.")
+                    shutil.copy2(input_file, output_path.replace('.ecw', '.tif'))
             else:
-                log(f"ERRO: gdal_translate nao disponivel para conversao")
-                sys.exit(1)
+                log(f"Formato nao suportado para conversao")
         
-        # Diagnóstico do resultado
         if RUN_DIAGNOSTIC_OUTPUT and os.path.exists(output_path):
             log(f"")
             log("=" * 70)
-            log(" DIAGNOSTICO DO ARQUIVO DE SAIDA")
+            log(" DIAGNOSTICO SAIDA")
             log("=" * 70)
             json_out = os.path.join(OUTPUT_DIR, "diagnostico_output.json")
             report = diagnostic_report(output_path)
             save_diagnostic_json(report, json_out)
             
-            log(f"")
             log(f"  {'='*50}")
             log(f"  RESUMO")
             log(f"  {'='*50}")
@@ -772,55 +710,44 @@ def main():
             log(f"  Tamanho: {human_size(report.get('tamanho_disco', 0))}")
             log(f"  Dimensao: {report.get('largura', '?')}x{report.get('altura', '?')}")
             if report.get('gsd_cm'): log(f"  GSD: {report['gsd_cm']:.2f} cm/px")
-            problemas = report.get('problemas', [])
-            if problemas:
-                log(f"  Problemas: {len(problemas)}")
-                for p in problemas[:5]: log(f"    - {p}")
-            else: log(f"  Problemas: Nenhum")
-            log(f"  {'='*50}")
         
-        t_total = time.time() - t_inicio
         log(f"")
         log("=" * 70)
-        log(f" CONCLUIDO! ({t_total/60:.1f} min)")
+        log(f" CONCLUIDO! ({(time.time()-t_inicio)/60:.1f} min)")
         log("=" * 70)
         return
 
-    # ── SE TIVER 2+ ARQUIVOS: MOSAICO COMPLETO ─────────────────────────
+    # ── 2+ ARQUIVOS: MOSAICO ──────────────────────────────────
     log(f"")
     log("=" * 60)
-    log(" MODO MOSAICO: 2+ arquivos - mesclando com feathering")
+    log(" MODO MOSAICO")
     log("=" * 60)
 
-    # Converter ECWs para TIFF
     arquivos_processados = []
     temp_dir = tempfile.mkdtemp(prefix="mosaico_ecw_")
 
     for f in input_files:
-        if f.lower().endswith('.ecw'):
-            if gdal_cmd:
-                tiff_temp = os.path.join(temp_dir, os.path.basename(f).replace('.ecw', '.tif'))
-                log(f"")
-                log(f"[PRE] Convertendo {os.path.basename(f)}...")
-                if convert_ecw_to_tiff(f, tiff_temp, gdal_cmd, gdal_env):
-                    arquivos_processados.append(tiff_temp)
-                    log(f"[PRE] OK")
-                else:
-                    log(f"[PRE] ERRO: Pulando {os.path.basename(f)}")
+        if f.lower().endswith('.ecw') and gdal_cmd:
+            tiff_temp = os.path.join(temp_dir, os.path.basename(f).replace('.ecw', '.tif'))
+            log(f"")
+            log(f"[PRE] Convertendo {os.path.basename(f)}...")
+            if convert_ecw_to_tiff(f, tiff_temp, gdal_cmd, gdal_env):
+                arquivos_processados.append(tiff_temp)
             else:
-                log(f"[PRE] ERRO: Sem plugin ECW para ler {os.path.basename(f)}")
+                log(f"[PRE] Pulando {os.path.basename(f)}")
+        elif f.lower().endswith('.ecw'):
+            log(f"[PRE] Pulando {os.path.basename(f)} (sem GDAL)")
         else:
             arquivos_processados.append(f)
 
     if len(arquivos_processados) == 0:
-        log(f"ERRO: Nenhum arquivo processado.")
+        log(f"ERRO: Nenhum arquivo")
         shutil.rmtree(temp_dir, ignore_errors=True)
         sys.exit(1)
 
     log(f"")
-    log(f"Prontos para mosaico: {len(arquivos_processados)}")
+    log(f"Prontos: {len(arquivos_processados)}")
 
-    # Diagnóstico dos inputs
     if RUN_DIAGNOSTIC_INPUTS:
         log(f"")
         log("=" * 70)
@@ -829,20 +756,12 @@ def main():
         for f in input_files:
             base = os.path.splitext(os.path.basename(f))[0]
             json_path = os.path.join(OUTPUT_DIR, f"diagnostico_input_{base}.json")
-            log(f"")
-            log(f"Processando: {os.path.basename(f)}")
             save_diagnostic_json(diagnostic_report(f), json_path)
 
-    # Mosaico
-    log(f"")
-    log("=" * 70)
-    log(" MOSAICO")
-    log("=" * 70)
-    
     output_path = os.path.join(OUTPUT_DIR, OUTPUT_FILENAME)
     if RUN_MOSAIC:
         if os.path.exists(output_path):
-            log(f"ATENCAO: '{output_path}' existe, sobrescrevendo.")
+            log(f"Sobrescrevendo {output_path}")
         resultado_path = run_mosaic_tiled(arquivos_processados, output_path)
         if resultado_path:
             output_path = resultado_path
@@ -850,25 +769,16 @@ def main():
             log(f"ERRO no mosaico")
             shutil.rmtree(temp_dir, ignore_errors=True)
             sys.exit(1)
-    else:
-        if not os.path.exists(output_path):
-            log(f"AVISO: mosaico desabilitado e saida nao existe")
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            sys.exit(1)
 
-    # Diagnóstico output
     if RUN_DIAGNOSTIC_OUTPUT and os.path.exists(output_path):
         log(f"")
         log("=" * 70)
         log(" DIAGNOSTICO SAIDA")
         log("=" * 70)
         json_out = os.path.join(OUTPUT_DIR, "diagnostico_output.json")
-        log(f"")
-        log(f"Processando: {os.path.basename(output_path)}")
         report = diagnostic_report(output_path)
         save_diagnostic_json(report, json_out)
-
-        log(f"")
+        
         log(f"  {'='*50}")
         log(f"  RESUMO")
         log(f"  {'='*50}")
@@ -884,9 +794,7 @@ def main():
             for p in problemas[:5]: log(f"    - {p}")
             if len(problemas) > 5: log(f"    ... +{len(problemas)-5}")
         else: log(f"  Problemas: Nenhum")
-        log(f"  {'='*50}")
 
-    # Listar output
     log(f"")
     log("=" * 70)
     log(" ARQUIVOS GERADOS")
@@ -894,15 +802,12 @@ def main():
     for f in sorted(glob.glob(os.path.join(OUTPUT_DIR, "*"))):
         log(f"  {human_size(os.path.getsize(f)):>8}  {os.path.basename(f)}")
 
-    # Limpar
     if not KEEP_TEMP_TIFFS:
         shutil.rmtree(temp_dir, ignore_errors=True)
-        log(f"Temp removido: {temp_dir}")
 
-    t_total = time.time() - t_inicio
     log(f"")
     log("=" * 70)
-    log(f" CONCLUIDO! ({t_total/60:.1f} min)")
+    log(f" CONCLUIDO! ({(time.time()-t_inicio)/60:.1f} min)")
     log("=" * 70)
 
 
